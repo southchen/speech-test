@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>日语例句音频生成器</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍙</text></svg>">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -36,13 +37,13 @@
 
                 <div class="controls">
                     <button id="generateBtn" class="btn btn-primary">
-                        🎵 生成音频
+                        生成音频
                     </button>
                     <button id="playBtn" class="btn btn-secondary" disabled>
-                        ▶️ 播放
+                        播放
                     </button>
                     <button id="downloadBtn" class="btn btn-download" disabled>
-                        💾 下载MP3
+                        下载MP3
                     </button>
                 </div>
             </div>
@@ -90,14 +91,14 @@
                 this.playBtn.addEventListener('click', () => this.playAudio());
                 this.downloadBtn.addEventListener('click', () => this.downloadAudio());
 
-                // 示例句子点击事件
+                // Example sentence click events
                 document.querySelectorAll('.example-item').forEach(item => {
                     item.addEventListener('click', () => {
                         this.textInput.value = item.textContent;
                     });
                 });
 
-                // 回车快捷键
+                // Keyboard shortcut for Enter
                 this.textInput.addEventListener('keydown', (e) => {
                     if (e.ctrlKey && e.key === 'Enter') {
                         this.generateAudio();
@@ -149,7 +150,7 @@
                     await this.synthesizeSpeechWebSocket(text, voice);
                 } catch (error) {
                     console.error('生成音频失败:', error);
-                    this.showStatus(`❌ 生成失败: ${error.message}`, 'error');
+                    this.showStatus(`生成失败: ${error.message}`, 'error');
                 } finally {
                     this.generateBtn.disabled = false;
                 }
@@ -160,7 +161,7 @@
                     const requestId = this.generateRequestId();
                     const timestamp = this.generateTimestamp();
                     
-                    // WebSocket连接URL
+                    // WebSocket connection URL
                     const wsUrl = `wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=6A5AA1D4EAFF4E9FB37E23D68491D6F4&ConnectionId=${requestId}`;
                     
                     const ws = new WebSocket(wsUrl);
@@ -292,7 +293,7 @@
                 console.log('音频总大小:', totalLength, 'bytes');
                 
                 if (totalLength === 0) {
-                    this.showStatus('❌ 未收到有效音频数据', 'error');
+                    this.showStatus('未收到有效音频数据', 'error');
                     return;
                 }
                 
@@ -328,7 +329,7 @@
                 this.playBtn.disabled = false;
                 this.downloadBtn.disabled = false;
                 
-                this.showStatus('✅ 音频生成成功！', 'success');
+                this.showStatus('音频生成成功！', 'success');
                 
                 // 3秒后隐藏状态
                 setTimeout(() => this.hideStatus(), 3000);
@@ -359,7 +360,7 @@
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
 
-                this.showStatus(`📁 已下载: ${filename}`, 'success');
+                this.showStatus(`已下载: ${filename}`, 'success');
                 setTimeout(() => this.hideStatus(), 3000);
             }
         }
