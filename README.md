@@ -1,5 +1,5 @@
 # 日语例句音频生成器
-> Sentences are the molecules of language; everything else is just atoms. If you learn words without sentences, you end up with a dictionary in your head. If you learn sentences, you end up with a language.”
+> Sentences are the molecules of language; everything else is just atoms. If you learn words without sentences, you end up with a dictionary in your head. If you learn sentences, you end up with a language.
 > 
 > — Fluent Forever, Gabriel Wyner
 
