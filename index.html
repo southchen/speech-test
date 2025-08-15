@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>日语例句音频生成器</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>日语例句音频生成器</h1>
+            <p>“Sentences are the molecules of language; everything else is just atoms.”</p>
+            <p>— Fluent Forever, Chapter 5: Sentence Play</p>
+        </div>
+
+        <div class="main-content">
+            <div class="input-section">
+                <div class="form-group">
+                    <label for="textInput">输入日语文本:</label>
+                    <textarea 
+                        id="textInput" 
+                        placeholder="请输入日语文本，例如：美味しかった！また来ます。"
+                    ></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="voiceSelect">选择声音:</label>
+                    <select id="voiceSelect">
+                        <option value="ja-JP-NanamiNeural">Nanami (女声，推荐)</option>
+                        <option value="ja-JP-KeitaNeural">Keita (男声)</option>
+                        <option value="ja-JP-AoiNeural">Aoi (女声，年轻)</option>
+                        <option value="ja-JP-DaichiNeural">Daichi (男声，成熟)</option>
+                    </select>
+                </div>
+
+                <div class="controls">
+                    <button id="generateBtn" class="btn btn-primary">
+                        🎵 生成音频
+                    </button>
+                    <button id="playBtn" class="btn btn-secondary" disabled>
+                        ▶️ 播放
+                    </button>
+                    <button id="downloadBtn" class="btn btn-download" disabled>
+                        💾 下载MP3
+                    </button>
+                </div>
+            </div>
+
+            <div id="statusDiv"></div>
+
+            <div id="audioSection" class="audio-section" style="display: none;">
+                <h3>生成的音频:</h3>
+                <audio id="audioPlayer" class="audio-player" controls></audio>
+            </div>
+
+            <div class="examples">
+                <h3>示例句子 (点击使用):</h3>
+                <div class="example-list">
+                    <div class="example-item">美味しかった！また来ます。</div>
+                    <div class="example-item">明日は雨だと思います。</div>
+                    <div class="example-item">私は猫が好きです。</div>
+                    <div class="example-item">ここは静かでいいですね。</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class JapaneseTTS {
+            constructor() {
+                this.audioBlob = null;
+                this.initializeElements();
+                this.bindEvents();
+            }
+
+            initializeElements() {
+                this.textInput = document.getElementById('textInput');
+                this.voiceSelect = document.getElementById('voiceSelect');
+                this.generateBtn = document.getElementById('generateBtn');
+                this.playBtn = document.getElementById('playBtn');
+                this.downloadBtn = document.getElementById('downloadBtn');
+                this.statusDiv = document.getElementById('statusDiv');
+                this.audioSection = document.getElementById('audioSection');
+                this.audioPlayer = document.getElementById('audioPlayer');
+            }
+
+            bindEvents() {
+                this.generateBtn.addEventListener('click', () => this.generateAudio());
+                this.playBtn.addEventListener('click', () => this.playAudio());
+                this.downloadBtn.addEventListener('click', () => this.downloadAudio());
+
+                // 示例句子点击事件
+                document.querySelectorAll('.example-item').forEach(item => {
+                    item.addEventListener('click', () => {
+                        this.textInput.value = item.textContent;
+                    });
+                });
+
+                // 回车快捷键
+                this.textInput.addEventListener('keydown', (e) => {
+                    if (e.ctrlKey && e.key === 'Enter') {
+                        this.generateAudio();
+                    }
+                });
+            }
+
+            createSSML(text, voice) {
+                return `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="ja-JP">
+                    <voice name="${voice}">
+                        <prosody rate="medium" pitch="medium">${text}</prosody>
+                    </voice>
+                </speak>`;
+            }
+
+            showStatus(message, type = 'loading') {
+                this.statusDiv.innerHTML = `<div class="status ${type}">${message}</div>`;
+            }
+
+            hideStatus() {
+                this.statusDiv.innerHTML = '';
+            }
+
+            generateRequestId() {
+                return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                    const r = Math.random() * 16 | 0;
+                    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+                    return v.toString(16);
+                });
+            }
+
+            generateTimestamp() {
+                return new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+            }
+
+            async generateAudio() {
+                const text = this.textInput.value.trim();
+                if (!text) {
+                    this.showStatus('请输入要转换的日语文本', 'error');
+                    return;
+                }
+
+                const voice = this.voiceSelect.value;
+                
+                this.generateBtn.disabled = true;
+                this.showStatus('<span class="loader"></span> 正在生成音频，请稍候...', 'loading');
+
+                try {
+                    await this.synthesizeSpeechWebSocket(text, voice);
+                } catch (error) {
+                    console.error('生成音频失败:', error);
+                    this.showStatus(`❌ 生成失败: ${error.message}`, 'error');
+                } finally {
+                    this.generateBtn.disabled = false;
+                }
+            }
+
+            async synthesizeSpeechWebSocket(text, voice) {
+                return new Promise((resolve, reject) => {
+                    const requestId = this.generateRequestId();
+                    const timestamp = this.generateTimestamp();
+                    
+                    // WebSocket连接URL
+                    const wsUrl = `wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=6A5AA1D4EAFF4E9FB37E23D68491D6F4&ConnectionId=${requestId}`;
+                    
+                    const ws = new WebSocket(wsUrl);
+                    const audioChunks = [];
+                    let hasError = false;
+
+                    ws.onopen = () => {
+                        console.log('WebSocket连接已建立');
+                        
+                        // 发送配置消息
+                        const configMessage = `X-Timestamp:${timestamp}\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n{"context":{"synthesis":{"audio":{"metadataoptions":{"sentenceBoundaryEnabled":"false","wordBoundaryEnabled":"true"},"outputFormat":"audio-24khz-48kbitrate-mono-mp3"}}}}`;
+                        ws.send(configMessage);
+
+                        // 发送SSML消息
+                        const ssml = this.createSSML(text, voice);
+                        const ssmlMessage = `X-RequestId:${requestId}\r\nX-Timestamp:${timestamp}\r\nContent-Type:application/ssml+xml\r\nPath:ssml\r\n\r\n${ssml}`;
+                        ws.send(ssmlMessage);
+                    };
+
+                    ws.onmessage = async (event) => {
+                        if (typeof event.data === 'string') {
+                            console.log('收到文本消息:', event.data);
+                            
+                            if (event.data.includes('Path:turn.end')) {
+                                // 音频传输完成
+                                console.log('音频传输完成，收到的音频块数量:', audioChunks.length);
+                                ws.close();
+                                
+                                if (audioChunks.length > 0) {
+                                    this.processAudioChunks(audioChunks);
+                                    resolve();
+                                } else {
+                                    reject(new Error('未收到音频数据'));
+                                }
+                            }
+                        } else if (event.data instanceof Blob) {
+                            // 处理Blob类型的二进制数据
+                            const arrayBuffer = await event.data.arrayBuffer();
+                            this.parseAudioMessage(arrayBuffer, audioChunks);
+                        } else if (event.data instanceof ArrayBuffer) {
+                            // 直接处理ArrayBuffer
+                            this.parseAudioMessage(event.data, audioChunks);
+                        } else {
+                            console.log('收到未知类型数据:', typeof event.data);
+                        }
+                    };
+
+                    ws.onerror = (error) => {
+                        console.error('WebSocket错误:', error);
+                        hasError = true;
+                        reject(new Error('WebSocket连接错误'));
+                    };
+
+                    ws.onclose = (event) => {
+                        console.log('WebSocket连接已关闭:', event.code, event.reason);
+                        if (!hasError && audioChunks.length === 0) {
+                            reject(new Error('连接意外关闭，未收到音频数据'));
+                        }
+                    };
+
+                    // 设置超时
+                    setTimeout(() => {
+                        if (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN) {
+                            ws.close();
+                            reject(new Error('请求超时'));
+                        }
+                    }, 30000);
+                });
+            }
+
+            parseAudioMessage(arrayBuffer, audioChunks) {
+                try {
+                    console.log('解析音频消息，总大小:', arrayBuffer.byteLength);
+                    
+                    // 检查是否有足够的数据读取头部
+                    if (arrayBuffer.byteLength < 2) {
+                        console.log('数据太小，跳过');
+                        return;
+                    }
+                    
+                    const dataView = new DataView(arrayBuffer);
+                    
+                    // 读取头部长度 (big-endian)
+                    const headerLength = dataView.getUint16(0, false);
+                    console.log('头部长度:', headerLength);
+                    
+                    // 验证头部长度是否合理
+                    if (headerLength >= arrayBuffer.byteLength) {
+                        console.log('头部长度异常，尝试读取整个消息作为音频数据');
+                        // 有些消息可能没有标准头部，直接当作音频数据
+                        if (arrayBuffer.byteLength > 100) { // 只有当数据足够大时才当作音频
+                            audioChunks.push(arrayBuffer);
+                            console.log('添加整个消息作为音频块，大小:', arrayBuffer.byteLength);
+                        }
+                        return;
+                    }
+                    
+                    // 读取头部内容
+                    const headerBytes = new Uint8Array(arrayBuffer, 2, headerLength);
+                    const headerText = new TextDecoder('utf-8').decode(headerBytes);
+                    console.log('头部内容:', headerText);
+                    
+                    // 检查是否是音频数据
+                    if (headerText.includes('Path:audio') || headerText.includes('Content-Type:audio')) {
+                        const audioDataStart = 2 + headerLength;
+                        if (audioDataStart < arrayBuffer.byteLength) {
+                            const audioData = arrayBuffer.slice(audioDataStart);
+                            audioChunks.push(audioData);
+                            console.log('提取音频数据，大小:', audioData.byteLength);
+                        }
+                    } else {
+                        console.log('非音频消息，跳过');
+                    }
+                } catch (error) {
+                    console.error('解析音频消息出错:', error);
+                    // 如果解析失败，尝试将整个数据当作音频（容错处理）
+                    if (arrayBuffer.byteLength > 1000) { // 只有足够大的数据才可能是音频
+                        audioChunks.push(arrayBuffer);
+                        console.log('解析失败，将整个消息当作音频块');
+                    }
+                }
+            }
+
+            processAudioChunks(audioChunks) {
+                console.log('开始处理音频块，总数:', audioChunks.length);
+                
+                // 合并所有音频块
+                const totalLength = audioChunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+                console.log('音频总大小:', totalLength, 'bytes');
+                
+                if (totalLength === 0) {
+                    this.showStatus('❌ 未收到有效音频数据', 'error');
+                    return;
+                }
+                
+                const combinedArray = new Uint8Array(totalLength);
+                
+                let offset = 0;
+                for (const chunk of audioChunks) {
+                    const chunkArray = new Uint8Array(chunk);
+                    combinedArray.set(chunkArray, offset);
+                    offset += chunk.byteLength;
+                    console.log('合并音频块，偏移:', offset);
+                }
+
+                // 验证MP3头部（MP3文件应该以0xFF 0xFB或类似开头）
+                if (combinedArray.length > 4) {
+                    const header = Array.from(combinedArray.slice(0, 4))
+                        .map(b => '0x' + b.toString(16).padStart(2, '0'))
+                        .join(' ');
+                    console.log('音频文件头部:', header);
+                }
+
+                // 创建音频Blob
+                this.audioBlob = new Blob([combinedArray], { type: 'audio/mpeg' });
+                
+                // 创建音频URL并播放
+                const audioUrl = URL.createObjectURL(this.audioBlob);
+                this.audioPlayer.src = audioUrl;
+                
+                // 显示音频播放器
+                this.audioSection.style.display = 'block';
+                
+                // 启用按钮
+                this.playBtn.disabled = false;
+                this.downloadBtn.disabled = false;
+                
+                this.showStatus('✅ 音频生成成功！', 'success');
+                
+                // 3秒后隐藏状态
+                setTimeout(() => this.hideStatus(), 3000);
+
+                console.log('音频处理完成，可播放大小:', this.audioBlob.size, 'bytes');
+            }
+
+            playAudio() {
+                if (this.audioPlayer.src) {
+                    this.audioPlayer.play();
+                }
+            }
+
+            downloadAudio() {
+                if (!this.audioBlob) return;
+
+                const text = this.textInput.value.trim();
+                const cleanText = text.replace(/[^\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF\u3400-\u4DBF]/g, '').substring(0, 20);
+                const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
+                const filename = `japanese_tts_${cleanText || timestamp}.mp3`;
+
+                const url = URL.createObjectURL(this.audioBlob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                this.showStatus(`📁 已下载: ${filename}`, 'success');
+                setTimeout(() => this.hideStatus(), 3000);
+            }
+        }
+
+        // 初始化应用
+        document.addEventListener('DOMContentLoaded', () => {
+            new JapaneseTTS();
+        });
+    </script>
+</body>
+</html>
